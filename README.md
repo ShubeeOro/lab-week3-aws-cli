@@ -1,5 +1,2 @@
 # 4640-w3-lab
-
-Kevin Ding
-Ahmed Ali
-Hanan Kakooza
+Team members: Kevin Ding, Ahmed Ali, Hanan Kakooza
