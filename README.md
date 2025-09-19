@@ -2,7 +2,7 @@
 Team members: Kevin Ding, Ahmed Ali, Hanan Kakooza
 
 Do the following:  
-Run ssh-keygen on local dev environment (IMPORTANT: Assumes you are naming your public and private key "bcitkey" based on week 3 lab)  
+Run ssh-keygen on local dev environment (IMPORTANT: Assumes you are naming your public and private key "bcitkey.pub" and "bcitkey" based on week 3 lab)  
 Run import_public_key (Uploads the public key to KeyPair on AWS)  
 Run create-bucket (Creates an S3 bucket only in the us-west-2)  
 Run create-vpc (Creates VPC)  
