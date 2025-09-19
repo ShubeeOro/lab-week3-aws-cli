@@ -1,42 +1,82 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
 region="us-west-2"
 key_name="bcitkey"
+security_group_name="MySecurityGroup"
 
+# brings in: vpc_id, subnet_id (from your create-vpc script)
 source ./infrastructure_data
 
-# Get most recent Debian AMI
+# --- Debian AMI (latest from Debian account) ---
 debian_ami=$(aws ec2 describe-images \
   --owners "136693071363" \
-  --filters 'Name=name,Values=debian-*-amd64-*' 'Name=architecture,Values=x86_64' 'Name=virtualization-type,Values=hvm' \
+  --filters 'Name=name,Values=debian-*-amd64-*' \
+            'Name=architecture,Values=x86_64' \
+            'Name=virtualization-type,Values=hvm' \
   --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' \
   --output text)
 
-# Create security group allowing SSH and HTTP from anywhere
-security_group_id=$(aws ec2 create-security-group --group-name MySecurityGroup \
- --description "Allow SSH and HTTP" --vpc-id $vpc_id --query 'GroupId' \
- --region $region \
- --output text)
+# --- Security group: reuse if present, else create ---
+security_group_id=$(aws ec2 describe-security-groups \
+  --region "$region" \
+  --filters "Name=vpc-id,Values=$vpc_id" "Name=group-name,Values=$security_group_name" \
+  --query 'SecurityGroups[0].GroupId' \
+  --output text 2>/dev/null || true)
 
-aws ec2 authorize-security-group-ingress --group-id $security_group_id \
- --protocol tcp --port 22 --cidr 0.0.0.0/0 --region $region
+if [ -z "$security_group_id" ] || [ "$security_group_id" = "None" ]; then
+  echo "Security group '$security_group_name' not found; creating it..."
+  security_group_id=$(aws ec2 create-security-group \
+    --region "$region" \
+    --group-name "$security_group_name" \
+    --description "Allow SSH and HTTP" \
+    --vpc-id "$vpc_id" \
+    --query 'GroupId' \
+    --output text)
+  echo "Created SG: $security_group_id"
+else
+  echo "Reusing existing SG: $security_group_id"
+fi
 
-aws ec2 authorize-security-group-ingress --group-id $security_group_id \
- --protocol tcp --port 80 --cidr 0.0.0.0/0 --region $region
+# Ensure ingress rules exist (ignore duplicates on re-run)
+aws ec2 authorize-security-group-ingress --region "$region" \
+  --group-id "$security_group_id" --protocol tcp --port 22 --cidr 0.0.0.0/0 \
+  >/dev/null 2>&1 || true
 
-# Launch an EC2 instance in the public subnet
-# COMPLETE THIS PART
-instance_id=
+aws ec2 authorize-security-group-ingress --region "$region" \
+  --group-id "$security_group_id" --protocol tcp --port 80 --cidr 0.0.0.0/0 \
+  >/dev/null 2>&1 || true
 
-# wait for ec2 instance to be running
-aws ec2 wait instance-running --instance-ids $instance_id
+# --- Launch instance in the public subnet ---
+instance_id=$(aws ec2 run-instances \
+  --region "$region" \
+  --image-id "$debian_ami" \
+  --instance-type t3.micro \
+  --key-name "$key_name" \
+  --security-group-ids "$security_group_id" \
+  --subnet-id "$subnet_id" \
+  --associate-public-ip-address \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=lab-debian}]' \
+  --query 'Instances[0].InstanceId' \
+  --output text)
 
-# Get the public IP address of the EC2 instance
-# COMPLETE THIS PART
-public_ip=
+echo "Launched instance: $instance_id"
 
-# Write instance data to a file
-# COMPLETE THIS PART
-echo "Public IP: $public_ip" 
+aws ec2 wait instance-running --instance-ids "$instance_id" --region "$region"
+aws ec2 wait instance-status-ok --instance-ids "$instance_id" --region "$region"
+
+public_ip=$(aws ec2 describe-instances \
+  --instance-ids "$instance_id" \
+  --region "$region" \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' \
+  --output text)
+
+# Overwrite (or switch to >> if you prefer appending each run)
+{
+  echo "instance_id=$instance_id"
+  echo "public_ip=$public_ip"
+} >> instance_data
+
+echo "Public IP: $public_ip (written to ./instance_data)"
+
+

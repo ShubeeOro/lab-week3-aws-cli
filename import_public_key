@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Import an SSH public key into AWS as "bcitkey"
+# Docs:
+# - AWS CLI ec2 import-key-pair: https://docs.aws.amazon.com/cli/latest/reference/ec2/import-key-pair.html
+# - EC2 key pairs overview:     https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
+
+set -e
+
+AWS_REGION="us-west-2"
+KEY_NAME="bcitkey"
+PUBLIC_KEY_PATH="$HOME/.ssh/${KEY_NAME}.pub"
+
+# Check if local public key exists
+if [ ! -f "$PUBLIC_KEY_PATH" ]; then
+  echo "Error: Local public key not found: $PUBLIC_KEY_PATH"
+  echo "Create it first, e.g.: ssh-keygen -t ed25519 -f \"$HOME/.ssh/${KEY_NAME}\""
+  exit 1
+fi
+
+# Check if key already exists in AWS
+if aws ec2 describe-key-pairs --region "$AWS_REGION" --key-names "$KEY_NAME" >/dev/null 2>&1; then
+  echo "Error: An EC2 key pair named \"$KEY_NAME\" already exists in $AWS_REGION."
+  echo "If you want to replace it, delete it first:"
+  echo "  aws ec2 delete-key-pair --region $AWS_REGION --key-name $KEY_NAME"
+  exit 1
+fi
+
+# Import the key
+aws ec2 import-key-pair \
+  --region "$AWS_REGION" \
+  --key-name "$KEY_NAME" \
+  --public-key-material "fileb://${PUBLIC_KEY_PATH}"
+
+echo "Success: Imported key pair \"$KEY_NAME\" to $AWS_REGION."
